@@ -312,15 +312,38 @@ function render(d) {
   document.getElementById('changeCount').textContent = d.changes.length;
   
   var chHtml = '';
-  for (var k = 0; k < Math.min(d.changes.length, 50); k++) {
-    var c = d.changes[k];
-    var ts = c.timestamp ? new Date(c.timestamp).toLocaleString().slice(5, 16) : '-';
-    chHtml += '<div class="change-item">' +
-      '<span class="time">' + ts + '</span>' +
-      '<span class="type ' + c.type + '">' + c.type.replace(/_/g, ' ') + '</span>' +
-      '<span class="msg">' + (c.message || '').slice(0, 60) + '</span>' +
-    '</div>';
+  if (d.changes && d.changes.length > 0) {
+    var groups = {};
+    for (var k = 0; k < d.changes.length; k++) {
+      var c = d.changes[k];
+      var ts = c.timestamp || 'unknown';
+      if (!groups[ts]) groups[ts] = [];
+      groups[ts].push(c);
+    }
+    
+    var sortedTs = Object.keys(groups).sort(function(a, b) { return new Date(b) - new Date(a); });
+    
+    for (var g = 0; g < sortedTs.length; g++) {
+      var tsKey = sortedTs[g];
+      var groupChanges = groups[tsKey];
+      var displayTs = tsKey === 'unknown' ? '未知时间' : new Date(tsKey).toLocaleString();
+      
+      chHtml += '<div class="sync-group" style="margin-bottom: 15px;">' +
+        '<div class="sync-time" style="font-weight:bold; background:#f0f0f0; padding:6px 12px; border-radius:4px; margin-bottom:8px; font-size:13px; color:#444;">' +
+          '🕒 ' + displayTs + ' 监控查询记录 <span style="font-weight:normal; color:#888; font-size:12px;">(' + groupChanges.length + ' 项变更)</span>' +
+        '</div>';
+      
+      for (var j = 0; j < groupChanges.length; j++) {
+        var c = groupChanges[j];
+        chHtml += '<div class="change-item" style="margin-left: 10px; border-left: 2px solid #e1e1e1; padding-left: 10px; margin-bottom: 4px;">' +
+          '<span class="type ' + c.type + '">' + c.type.replace(/_/g, ' ') + '</span>' +
+          '<span class="msg" style="color:#333;">' + (c.message || '') + '</span>' +
+        '</div>';
+      }
+      chHtml += '</div>';
+    }
   }
+  
   document.getElementById('changesList').innerHTML = chHtml || '<div class="empty">暂无变更</div>';
 }
 

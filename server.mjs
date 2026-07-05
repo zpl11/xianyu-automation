@@ -286,7 +286,7 @@ class ShopStore {
       totalItems: items.length, 
       activeItems: items.filter(i => i.status !== 'sold_out').length, 
       lastUpdate: this.data.lastUpdate, 
-      changes: (this.data.changes||[]).slice(-50).reverse(), 
+      changes: (this.data.changes||[]).slice(-200).reverse(), 
       items: items.map(i => ({ 
         itemId: i.itemId, title: i.title, price: i.price, 
         status: i.status, firstSeen: i.firstSeen, lastSeen: i.lastSeen, 
