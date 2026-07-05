@@ -90,8 +90,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <button class="query-btn" id="btnStats" onclick="queryAll()">📊 获取统计数据</button>
     </span>
   </div>
-  <div id="itemsList"></div>
-</div>
+  <div class="diff-container" style="display:flex; gap: 20px;">
+    <div style="flex:1;">
+      <h3 style="margin-top:0; margin-bottom:10px; padding-bottom:5px; border-bottom:1px solid #eee; font-size:15px; color:#555;">上次查询快照 <span class="badge" id="prevItemCount">0</span></h3>
+      <div id="prevItemsList"></div>
+    </div>
+    <div style="flex:1;">
+      <h3 style="margin-top:0; margin-bottom:10px; padding-bottom:5px; border-bottom:1px solid #eee; font-size:15px; color:#0366d6;">本次查询结果 <span class="badge" id="currItemCount">0</span></h3>
+      <div id="currItemsList"></div>
+    </div>
+  </div>
 <div id="changesSection" class="section" style="display:none">
 <div class="section-title">📝 变更记录 <span id="changeCount" class="badge">0</span></div>
   <div id="changesList"></div>
@@ -274,38 +282,79 @@ function render(d) {
   document.getElementById('itemCount').textContent = d.items.length;
   document.getElementById('lastUpdate').textContent = d.lastUpdate ? new Date(d.lastUpdate).toLocaleString() : '-';
   
-  var active = d.items.filter(function(i) { return i.status !== 'sold_out'; });
-  var sold = d.items.filter(function(i) { return i.status === 'sold_out'; });
+  var prevSnapshot = d.previousSnapshot || [];
+  var currItems = d.items.filter(function(i) { return i.status !== 'sold_out'; });
   
-  var html = '';
-  for (var i = 0; i < active.length; i++) {
-    var item = active[i];
-    var tag = item.checkCount <= 1 ? '<span class="tag new">新品</span>' : '';
-    var statsText = (item.views || item.wants)
-      ? ('👁' + (item.views||0) + ' ❤️' + (item.wants||0) + ' ⭐' + (item.favorites||0) + ' 💬' + (item.comments||0) + ' 📝' + (item.reviews||0))
-      : '<span style="color:#bbb">待查询</span>';
+  document.getElementById('prevItemCount').textContent = prevSnapshot.length;
+  document.getElementById('currItemCount').textContent = currItems.length;
+  
+  // 建立映射表用于比对
+  var prevMap = {}; prevSnapshot.forEach(function(i) { prevMap[i.itemId] = i; });
+  var currMap = {}; currItems.forEach(function(i) { currMap[i.itemId] = i; });
+  
+  // 渲染上次数据 (左栏)
+  var prevHtml = '';
+  for (var p = 0; p < prevSnapshot.length; p++) {
+    var pItem = prevSnapshot[p];
+    var bg = '', badge = '', titleStyle = '';
     
-    html += '<div class="item-card">' +
+    if (!currMap[pItem.itemId]) {
+      // 在本次被下架
+      bg = 'background-color: #fff1f0; opacity: 0.8;';
+      badge = '<span class="tag" style="background:#ff4d4f;color:#fff;">已下架 / 消失</span>';
+      titleStyle = 'text-decoration:line-through;color:#999;';
+    } else {
+      var cMatch = currMap[pItem.itemId];
+      if (cMatch.price !== pItem.price || cMatch.title !== pItem.title) {
+        bg = 'background-color: #fffbe6;';
+        badge = '<span class="tag" style="background:#faad14;color:#fff;">被修改</span>';
+      }
+    }
+    
+    prevHtml += '<div class="item-card" style="' + bg + '">' +
       '<div class="item-info">' +
-        '<div class="item-title"><a href="' + item.url + '" target="_blank">' + item.title + '</a>' + tag + '</div>' +
-        '<div class="item-stats"><span id="s_' + item.itemId + '">' + statsText + '</span></div>' +
+        '<div class="item-title"><a href="' + pItem.url + '" target="_blank" style="' + titleStyle + '">' + pItem.title + '</a> ' + badge + '</div>' +
       '</div>' +
-      '<div class="item-price">¥' + (item.price || '?') + '</div>' +
-      '<div class="item-meta">' + item.checkCount + '次</div>' +
+      '<div class="item-price">¥' + (pItem.price || '?') + '</div>' +
     '</div>';
   }
   
-  if (sold.length > 0) {
-    html += '<div style="padding:10px 20px;background:#fafafa;font-size:13px;color:#999">已下架 ' + sold.length + ' 个:</div>';
-    for (var j = 0; j < sold.length; j++) {
-      html += '<div class="item-card" style="opacity:.6">' +
-        '<div class="item-info"><div class="item-title"><span style="text-decoration:line-through">' + sold[j].title + '</span> <span class="tag sold">下架</span></div></div>' +
-        '<div class="item-price">¥' + (sold[j].price || '?') + '</div>' +
-      '</div>';
+  // 渲染本次数据 (右栏)
+  var currHtml = '';
+  for (var i = 0; i < currItems.length; i++) {
+    var cItem = currItems[i];
+    var bg = '', badge = '';
+    
+    var statsText = (cItem.views || cItem.wants)
+      ? ('👁' + (cItem.views||0) + ' ❤️' + (cItem.wants||0) + ' ⭐' + (cItem.favorites||0) + ' 💬' + (cItem.comments||0) + ' 📝' + (cItem.reviews||0))
+      : '<span style="color:#bbb">待查询</span>';
+      
+    if (!prevMap[cItem.itemId]) {
+      // 这是一个新出现的商品！
+      bg = 'background-color: #f6ffed; border-left: 3px solid #52c41a;';
+      badge = '<span class="tag" style="background:#52c41a;color:#fff;">全新上架</span>';
+    } else {
+      var pMatch = prevMap[cItem.itemId];
+      if (pMatch.price !== cItem.price || pMatch.title !== cItem.title) {
+        bg = 'background-color: #fffbe6; border-left: 3px solid #faad14;';
+        badge = '<span class="tag" style="background:#faad14;color:#fff;">最新修改</span>';
+      } else if (cItem.checkCount <= 1) {
+        badge = '<span class="tag new">新品</span>';
+      }
     }
+    
+    currHtml += '<div class="item-card" style="' + bg + '">' +
+      '<div class="item-info">' +
+        '<div class="item-title"><a href="' + cItem.url + '" target="_blank">' + cItem.title + '</a> ' + badge + '</div>' +
+        '<div class="item-stats"><span id="s_' + cItem.itemId + '">' + statsText + '</span></div>' +
+      '</div>' +
+      '<div class="item-price">¥' + (cItem.price || '?') + '</div>' +
+      '<div class="item-meta">' + cItem.checkCount + '次</div>' +
+    '</div>';
   }
   
-  document.getElementById('itemsList').innerHTML = html || '<div class="empty">暂无商品</div>';
+  document.getElementById('prevItemsList').innerHTML = prevHtml || '<div class="empty">暂无上次查询快照</div>';
+  document.getElementById('currItemsList').innerHTML = currHtml || '<div class="empty">暂无在售商品</div>';
   
   // Changes
   document.getElementById('changesSection').style.display = 'block';

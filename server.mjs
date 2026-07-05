@@ -170,12 +170,26 @@ class ShopStore {
   constructor(userId) {
     this.userId = userId;
     this.filepath = path.join(DATA_DIR, `shop_${userId}.json`);
-    try { this.data = JSON.parse(fs.readFileSync(this.filepath, 'utf-8')); } catch(e) { this.data = { userId, items: {}, changes: [], lastUpdate: null }; }
+    try { 
+      this.data = JSON.parse(fs.readFileSync(this.filepath, 'utf-8')); 
+      if (!this.data.previousSnapshot) this.data.previousSnapshot = [];
+    } catch(e) { 
+      this.data = { userId, items: {}, changes: [], previousSnapshot: [], lastUpdate: null }; 
+    }
   }
   save() { fs.writeFileSync(this.filepath, JSON.stringify(this.data, null, 2), 'utf-8'); }
   
   async fetchAndSync() {
     const now = new Date().toISOString();
+    
+    // 在同步前，先保存当前在售商品的快照
+    const currentActive = Object.values(this.data.items).filter(i => i.status !== 'sold_out');
+    this.data.previousSnapshot = currentActive.map(i => ({
+      itemId: i.itemId, title: i.title, price: i.price, 
+      status: i.status, firstSeen: i.firstSeen, lastSeen: i.lastSeen, 
+      url: i.url
+    }));
+    
     const allCards = [];
     const seenIds = new Set();
     
@@ -287,6 +301,7 @@ class ShopStore {
       activeItems: items.filter(i => i.status !== 'sold_out').length, 
       lastUpdate: this.data.lastUpdate, 
       changes: (this.data.changes||[]).slice(-200).reverse(), 
+      previousSnapshot: this.data.previousSnapshot || [],
       items: items.map(i => ({ 
         itemId: i.itemId, title: i.title, price: i.price, 
         status: i.status, firstSeen: i.firstSeen, lastSeen: i.lastSeen, 
