@@ -87,13 +87,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <span>📦 在售商品 <span id="itemCount" class="badge">0</span></span>
     <span style="display:flex;align-items:center;gap:8px;font-size:13px;color:#999">
       <span>更新: <span id="lastUpdate">-</span></span>
-      <button class="query-btn" id="btnStats" onclick="queryAll()">📊 获取统计数据</button>
     </span>
   </div>
   <div id="itemsList"></div>
 </div>
 <div id="changesSection" class="section" style="display:none">
-<div class="section-title">📝 变更记录 <span id="changeCount" class="badge">0</span></div>
+  <div class="section-title">📝 变更记录 <span id="changeCount" class="badge">0</span></div>
   <div id="changesList"></div>
 </div>
 </div>
@@ -128,12 +127,9 @@ async function start() {
     document.getElementById('btnExport').style.display = 'inline-block';
     render(d);
     
-    const hasStats = items.some(function(i) { return i.wants || i.views; });
-    if (!hasStats && items.length > 0) {
-      const tip = document.getElementById('tipArea');
-      tip.style.display = 'block';
-      tip.className = 'tip info';
-      tip.innerHTML = '💡 点击 "获取统计数据" 查看浏览/想要/收藏数（留言和评价仅卖家可见）';
+    // Automatically fetch stats
+    if (items.length > 0) {
+      queryAll();
     }
   } catch (e) {
     document.getElementById('loading').style.display = 'none';
@@ -142,8 +138,6 @@ async function start() {
 }
 
 async function queryAll() {
-  const btn = document.getElementById('btnStats');
-  btn.disabled = true;
   
   const tip = document.getElementById('tipArea');
   tip.style.display = 'block';
@@ -158,13 +152,13 @@ async function queryAll() {
   
   for (let i = startIdx; i < items.length; i++) {
     const item = items[i];
-    if (item.views || item.wants) { done++; continue; }
     
+
     try {
       const r = await fetch('/api/stats', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({itemId:item.itemId, userId}) });
       const d = await r.json();
       done++;
-      btn.textContent = '📊 ' + done + '/' + items.length;
+      tip.innerHTML = '⏳ 正在查询 ' + done + '/' + items.length + ' ... Chrome后台静默获取数据';
       
       if (d.ok) {
         item.views = d.views || 0;
@@ -186,15 +180,11 @@ async function queryAll() {
   }
   
   if (x5secHit) {
-    btn.disabled = false;
-    btn.textContent = '📊 获取统计数据 (' + done + '/' + items.length + ')';
     tip.className = 'tip info';
     tip.innerHTML = '⚠️ 安全验证已过期，<button class="btn-sm" onclick="goVerify()" style="background:#ff6b6b;color:#fff;border:none;padding:6px 16px;border-radius:4px;cursor:pointer;margin:0 8px">🔗 去验证</button> 然后自动继续（已查' + done + '个）';
   } else {
-    btn.disabled = false;
-    btn.textContent = '📊 获取统计数据';
     tip.className = 'tip ok';
-    tip.innerHTML = '✅ 查询完成！共查询 ' + done + ' 个商品';
+    tip.innerHTML = '✅ 所有商品统计数据获取完成！';
     sessionStorage.removeItem('statsProgress');
   }
 }
@@ -226,6 +216,19 @@ function exportCSV() {
 function refreshMonitor() {
   if (!userId) return;
   start();
+}
+
+function toggleGroupTimeline(groupId) {
+  const el = document.getElementById('timeline_' + groupId);
+  const btn = document.getElementById('btnToggle_' + groupId);
+  if (!el || !btn) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    btn.textContent = '折叠';
+  } else {
+    el.style.display = 'none';
+    btn.textContent = '展开';
+  }
 }
 
 async function goVerify() {
@@ -316,31 +319,73 @@ function render(d) {
     var groups = {};
     for (var k = 0; k < d.changes.length; k++) {
       var c = d.changes[k];
-      var ts = c.timestamp || 'unknown';
-      if (!groups[ts]) groups[ts] = [];
-      groups[ts].push(c);
+      var itemId = c.itemId;
+      if (!itemId) itemId = 'unknown';
+      
+      if (!groups[itemId]) {
+        var item = d.items.find(function(i) { return i.itemId === itemId; });
+        var title = item ? item.title : (itemId === 'unknown' ? '全局变更' : '商品 ' + itemId);
+        var url = item ? item.url : null;
+        groups[itemId] = { title: title, url: url, changes: [] };
+      }
+      groups[itemId].changes.push(c);
     }
     
-    var sortedTs = Object.keys(groups).sort(function(a, b) { return new Date(b) - new Date(a); });
+    var sortedItemIds = Object.keys(groups).sort(function(a, b) {
+      var latestA = groups[a].changes.length > 0 ? new Date(groups[a].changes[0].timestamp).getTime() : 0;
+      var latestB = groups[b].changes.length > 0 ? new Date(groups[b].changes[0].timestamp).getTime() : 0;
+      return latestB - latestA;
+    });
     
-    for (var g = 0; g < sortedTs.length; g++) {
-      var tsKey = sortedTs[g];
-      var groupChanges = groups[tsKey];
-      var displayTs = tsKey === 'unknown' ? '未知时间' : new Date(tsKey).toLocaleString();
+    for (var g = 0; g < sortedItemIds.length; g++) {
+      var itemId = sortedItemIds[g];
+      var group = groups[itemId];
+      var groupChanges = group.changes;
+      
+      groupChanges.sort(function(a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });
+      
+      var titleHtml = group.url ? '<a href="' + group.url + '" target="_blank" style="color:#1565c0; text-decoration:none;">' + group.title + '</a>' : group.title;
       
       chHtml += '<div class="sync-group" style="margin-bottom: 15px;">' +
-        '<div class="sync-time" style="font-weight:bold; background:#f0f0f0; padding:6px 12px; border-radius:4px; margin-bottom:8px; font-size:13px; color:#444;">' +
-          '🕒 ' + displayTs + ' 监控查询记录 <span style="font-weight:normal; color:#888; font-size:12px;">(' + groupChanges.length + ' 项变更)</span>' +
-        '</div>';
+        '<div class="sync-time" style="font-weight:bold; background:#e3f2fd; padding:6px 12px; border-radius:4px; margin-bottom:8px; font-size:13px; color:#1565c0; display:flex; justify-content:space-between; align-items:center;">' +
+          '<span style="flex:1; margin-right:10px;">📦 ' + titleHtml + ' <span style="font-weight:normal; color:#888; font-size:12px;">(' + groupChanges.length + ' 项变更)</span></span>' +
+          '<button class="query-btn" id="btnToggle_' + itemId + '" onclick="toggleGroupTimeline(\'' + itemId + '\')" style="font-size:12px; padding: 2px 8px; margin: 0; min-width: 40px; border-radius: 4px;">展开</button>' +
+        '</div>' +
+        '<div id="timeline_' + itemId + '" style="display:none;">';
       
+      var timeGroups = {};
       for (var j = 0; j < groupChanges.length; j++) {
         var c = groupChanges[j];
-        chHtml += '<div class="change-item" style="margin-left: 10px; border-left: 2px solid #e1e1e1; padding-left: 10px; margin-bottom: 4px;">' +
-          '<span class="type ' + c.type + '">' + c.type.replace(/_/g, ' ') + '</span>' +
-          '<span class="msg" style="color:#333;">' + (c.message || '') + '</span>' +
+        var ts = c.timestamp || 'unknown';
+        if (!timeGroups[ts]) timeGroups[ts] = [];
+        timeGroups[ts].push(c);
+      }
+      
+      var sortedTs = Object.keys(timeGroups).sort(function(a,b) {
+        if(a === 'unknown') return 1;
+        if(b === 'unknown') return -1;
+        return new Date(b).getTime() - new Date(a).getTime();
+      });
+
+      for (var j = 0; j < sortedTs.length; j++) {
+        var ts = sortedTs[j];
+        var changesAtTime = timeGroups[ts];
+        var displayTs = ts !== 'unknown' ? new Date(ts).toLocaleString() : '未知时间';
+        
+        var combinedContent = '';
+        for (var m = 0; m < changesAtTime.length; m++) {
+          var c = changesAtTime[m];
+          combinedContent += '<span style="display:inline-block; margin-right: 15px; margin-bottom: 2px;">' + 
+            '<span class="type ' + c.type + '" style="margin-right: 5px;">' + c.type.replace(/_/g, ' ') + '</span>' +
+            '<span class="msg" style="color:#333;">' + (c.message || '') + '</span></span>';
+        }
+
+        chHtml += '<div class="change-item" style="margin-left: 10px; border-left: 2px solid #e1e1e1; padding-left: 10px; margin-bottom: 4px; padding-top: 5px; padding-bottom: 5px; display:flex; align-items:flex-start;">' +
+          '<span class="time" style="min-width: 140px; margin-right: 10px; padding-top: 2px;">' + displayTs + '</span>' +
+          '<div style="flex:1; display:flex; flex-wrap:wrap;">' + combinedContent + '</div>' +
         '</div>';
       }
-      chHtml += '</div>';
+      chHtml += '</div></div>';
     }
   }
   

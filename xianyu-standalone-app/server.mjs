@@ -205,32 +205,48 @@ class ShopStore {
     };
     
     processCards(firstPageRes.data);
-    const totalCount = parseInt(firstPageRes.data.totalCount || '0', 10);
-    console.log(`  该店共 ${totalCount || '?'} 个商品`);
     
-    // 如果有更多页，并发请求剩余页（最多支持50页）
-    const totalPages = Math.min(50, Math.ceil(totalCount / 20));
-    if (totalPages > 1) {
-      console.log(`  并发获取剩余 ${totalPages - 1} 页 (限制并发数: 5)...`);
-      const pagesToFetch = Array.from({length: totalPages - 1}, (_, i) => i + 2);
+    // 闲鱼 API 目前返回的 totalCount 总是 0，所以不能依赖它来计算总页数。
+    // 我们需要通过 nextPage 字段以及是否能获取到数据来判断是否继续翻页。
+    let hasMore = firstPageRes.data.nextPage;
+    let currentPage = 2;
+    
+    if (hasMore) {
+      console.log(`  开始获取剩余页 (顺序抓取防反爬防重复)...`);
       
-      const maxConcurrent = 5;
-      for (let i = 0; i < pagesToFetch.length; i += maxConcurrent) {
-        const chunk = pagesToFetch.slice(i, i + maxConcurrent);
-        const promises = chunk.map(p => 
-          callMTOP('idle.web.xyh.item.list', { needGroupInfo: true, pageNumber: p, userId: String(this.userId), pageSize: 20 }, { spm_cnt: 'a21ybx.personal.0.0' })
-          .then(r => {
-            if (r && r.data) processCards(r.data);
-          })
-          .catch(e => {
-            console.error(`  ❌ 翻页 ${p} 异常:`, e.message);
-          })
-        );
-        await Promise.all(promises);
+      while (hasMore && currentPage <= 50) {
+        let p = currentPage++;
+        try {
+          let r = await callMTOP('idle.web.xyh.item.list', { needGroupInfo: true, pageNumber: p, userId: String(this.userId), pageSize: 20 }, { spm_cnt: 'a21ybx.personal.0.0' });
+          
+          if (!r || !r.data) {
+            console.log(`  ⚠️ 翻页 ${p} 数据为空，可能是触发了限流，等待 1.5 秒后重试...`);
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            r = await callMTOP('idle.web.xyh.item.list', { needGroupInfo: true, pageNumber: p, userId: String(this.userId), pageSize: 20 }, { spm_cnt: 'a21ybx.personal.0.0' });
+          }
+          
+          if (r && r.data) {
+            processCards(r.data);
+            if (r.data.nextPage === false || !r.data.cardList || r.data.cardList.length === 0) {
+              hasMore = false;
+            }
+          } else {
+            console.log(`  ❌ 翻页 ${p} 重试后依然失败，停止翻页。可能遇到安全验证。`);
+            hasMore = false;
+          }
+        } catch(e) {
+          console.error(`  ❌ 翻页 ${p} 异常:`, e.message);
+          hasMore = false;
+        }
+        
+        // 增加短暂休眠，避免并发/高频请求导致服务端状态混乱或封禁
+        if (hasMore) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
     }
     
-    console.log(`  已获取 ${allCards.length} 个商品 (${totalPages}页)`);
+    console.log(`  已获取 ${allCards.length} 个商品 (共扫描 ${currentPage - 1} 页)`);
     const apiIds = new Set(allCards.map(c => c._id));
     
     for (const card of allCards) {
@@ -313,12 +329,19 @@ class ShopStore {
 // ============================================================
 //  HTML 页面
 // ============================================================
-const HTML = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf-8');
-
 // ============================================================
 //  HTTP 路由
 // ============================================================
-function serveStatic(res, c, t='text/html') { res.writeHead(200,{'Content-Type':t+'; charset=utf-8','Access-Control-Allow-Origin':'*'}); res.end(c); }
+function serveStatic(res, c, t='text/html') { 
+  res.writeHead(200,{
+    'Content-Type':t+'; charset=utf-8',
+    'Access-Control-Allow-Origin':'*',
+    'Cache-Control':'no-cache, no-store, must-revalidate',
+    'Pragma':'no-cache',
+    'Expires':'0'
+  }); 
+  res.end(c); 
+}
 function serveJSON(res, d, s=200) {
   if (res.headersSent || res.writableEnded) return;
   let body;
@@ -338,7 +361,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
   try {
     const url = new URL(req.url, `http://${req.headers.host}`); const path = url.pathname;
-    if (path === '/' || path === '/index.html') return serveStatic(res, HTML);
+    if (path === '/' || path === '/index.html') {
+      const htmlContent = fs.readFileSync(__dirname + '/public/index.html', 'utf-8');
+      return serveStatic(res, htmlContent);
+    }
     if (path === '/api/session') return serveJSON(res, { valid: _session.valid, count: _session.count||0 });
 	    if (path === '/api/monitor' && req.method === 'POST') {
 	      const body = await parseBody(req); const id = body.userId;
