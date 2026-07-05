@@ -1,0 +1,22 @@
+{
+  "name": "xianyu-monitor-service",
+  "version": "1.0.0",
+  "description": "闲鱼监控SaaS平台 - 多用户店铺上新/数据追踪服务",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "init-db": "node init.js",
+    "login-xianyu": "node login_xianyu.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "better-sqlite3": "^11.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "playwright": "^1.48.0",
+    "node-cron": "^3.0.3",
+    "dotenv": "^16.4.5",
+    "uuid": "^10.0.0"
+  }
+}

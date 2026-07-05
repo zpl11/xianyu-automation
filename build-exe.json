@@ -1,0 +1,20 @@
+{
+  "name": "xianyu-monitor",
+  "version": "1.0.0",
+  "description": "闲鱼店铺监控 - 单文件版",
+  "main": "launcher.mjs",
+  "bin": "launcher.mjs",
+  "pkg": {
+    "assets": [
+      "public/**/*",
+      "node_modules/ws/**/*"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ],
+    "outputPath": "dist"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
+  }
+}

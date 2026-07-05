@@ -1,0 +1,5 @@
+(trapped) error reading bcrypt version
+Traceback (most recent call last):
+  File "D:\pythonENV\pyenv-win-master\pyenv-win\versions\3.10.0\lib\site-packages\passlib\handlers\bcrypt.py", line 620, in _load_backend_mixin
+    version = _bcrypt.__about__.__version__
+AttributeError: module 'bcrypt' has no attribute '__about__'

@@ -1,1 +1,12 @@
 .env
+node_modules/
+data/
+exports/
+captured_apis_*.jsonl
+mitmproxy-ca-cert.pem
+browser_data/
+mitm_*.log
+cert_server.log
+shop_monitor_data.json
+monitor_data.json
+*.pem

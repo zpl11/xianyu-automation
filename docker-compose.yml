@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  xianyu-monitor:
+    build: .
+    container_name: xianyu-monitor
+    ports:
+      - "3000:3000"    # Web 监控面板
+      - "9222:9222"    # Chrome 远程调试（用于首次登录）
+    volumes:
+      - xianyu-data:/app/data        # 店铺监控数据
+      - xianyu-exports:/app/exports  # CSV导出文件
+      - xianyu-chrome:/app/chrome-data  # Chrome登录会话（持久化登录态）
+    restart: unless-stopped
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+volumes:
+  xianyu-data:
+  xianyu-exports:
+  xianyu-chrome:

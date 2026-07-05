@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "闲鱼实时监控系统 (Xianyu Monitor)",
+  "version": "2.0.0",
+  "description": "闲鱼店铺实时监控：上新提醒、标题变更、浏览/想要/收藏/留言/评价数据追踪，支持导出Excel",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "闲鱼监控面板"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs",
+    "storage",
+    "alarms",
+    "unlimitedStorage",
+    "notifications",
+    "downloads"
+  ],
+  "host_permissions": [
+    "*://*.goofish.com/*",
+    "*://*.taobao.com/*",
+    "*://*.alicdn.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.goofish.com/*",
+        "*://*.taobao.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["inject.js"],
+      "matches": [
+        "*://*.goofish.com/*",
+        "*://*.taobao.com/*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>闲鱼监控面板</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📊 闲鱼实时监控</h1>
+      <div class="header-actions">
+        <button id="refresh-btn" class="btn btn-sm" title="刷新数据">🔄</button>
+        <button id="settings-btn" class="btn btn-sm" title="设置">⚙️</button>
+      </div>
+    </header>
+
+    <!-- 状态栏 -->
+    <div class="status-bar">
+      <span id="status-text" class="status-text">就绪</span>
+      <span id="last-update" class="last-update"></span>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-label">监控商品</div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="stat-value" id="stat-new-today">0</div>
+        <div class="stat-label">今日上新</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-views">0</div>
+        <div class="stat-label">总浏览</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-wants">0</div>
+        <div class="stat-label">总想要</div>
+      </div>
+    </div>
+
+    <!-- Tab 导航 -->
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="items">商品列表</button>
+      <button class="tab-btn" data-tab="changes">变更记录</button>
+      <button class="tab-btn" data-tab="export">数据导出</button>
+    </div>
+
+    <!-- 商品列表 -->
+    <div class="tab-content active" id="tab-items">
+      <div class="table-toolbar">
+        <input type="text" id="filter-input" placeholder="搜索商品标题..." class="filter-input">
+        <select id="sort-select" class="sort-select">
+          <option value="lastSeen-desc">最近更新 ↓</option>
+          <option value="wants-desc">想要数 ↓</option>
+          <option value="views-desc">浏览数 ↓</option>
+          <option value="firstSeen-desc">上新时间 ↓</option>
+          <option value="title-asc">标题 ↑</option>
+        </select>
+      </div>
+      <div class="table-container">
+        <table id="item-table">
+          <thead>
+            <tr>
+              <th>标题 / ID</th>
+              <th title="价格">💰</th>
+              <th title="浏览量">👁</th>
+              <th title="想要数">❤️</th>
+              <th title="收藏数">⭐</th>
+              <th title="留言数">💬</th>
+              <th title="评价数">📝</th>
+              <th title="状态">状态</th>
+            </tr>
+          </thead>
+          <tbody id="item-table-body">
+            <tr><td colspan="8" class="empty-row">正在加载数据...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 变更记录 -->
+    <div class="tab-content" id="tab-changes">
+      <div class="change-filters">
+        <label><input type="checkbox" id="filter-new" checked> 上新</label>
+        <label><input type="checkbox" id="filter-title" checked> 标题变更</label>
+        <label><input type="checkbox" id="filter-price" checked> 价格变更</label>
+        <label><input type="checkbox" id="filter-stats" checked> 数据变更</label>
+      </div>
+      <div class="change-list" id="change-list">
+        <div class="empty-row">暂无变更记录</div>
+      </div>
+    </div>
+
+    <!-- 导出 -->
+    <div class="tab-content" id="tab-export">
+      <div class="export-section">
+        <h3>📥 数据导出</h3>
+        <p>导出所有监控商品的数据，包含历史变更记录。</p>
+        
+        <div class="export-buttons">
+          <button id="export-csv-btn" class="btn btn-export">📊 导出 CSV (Excel可打开)</button>
+          <button id="export-json-btn" class="btn btn-export">📋 导出 JSON</button>
+        </div>
+        
+        <div class="export-preview">
+          <h4>📄 数据预览</h4>
+          <div id="export-preview-content" class="preview-content">
+            <table>
+              <thead>
+                <tr>
+                  <th>标题</th><th>价格</th><th>浏览</th><th>想要</th><th>收藏</th><th>留言</th><th>评价</th><th>发现时间</th>
+                </tr>
+              </thead>
+              <tbody id="preview-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 设置面板 -->
+    <div id="settings-panel" class="settings-panel" style="display:none;">
+      <div class="settings-overlay"></div>
+      <div class="settings-content">
+        <h2>⚙️ 监控设置</h2>
+        <div class="setting-group">
+          <label>监控关键词</label>
+          <input type="text" id="setting-keyword" placeholder="用户名/商品关键词">
+        </div>
+        <div class="setting-group">
+          <label>检查间隔（分钟）</label>
+          <input type="number" id="setting-interval" min="1" max="60" value="5">
+        </div>
+        <div class="setting-group">
+          <label>
+            <input type="checkbox" id="setting-notifications" checked>
+            启用通知
+          </label>
+        </div>
+        <div class="setting-actions">
+          <button id="setting-save-btn" class="btn">保存</button>
+          <button id="setting-cancel-btn" class="btn btn-secondary">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 商品详情弹窗 -->
+    <div id="item-detail-modal" class="modal" style="display:none;">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <button class="modal-close">✕</button>
+        <h2 id="modal-title">商品详情</h2>
+        <div id="modal-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

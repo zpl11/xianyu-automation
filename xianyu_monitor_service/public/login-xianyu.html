@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>闲鱼登录</title>
+<style>
+body { font-family: sans-serif; background:#0d1117; color:#f0f6fc; padding:24px; text-align:center; }
+.card { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:32px; max-width:600px; margin:40px auto; }
+h1 { font-size:20px; margin-bottom:16px; }
+p { color:#8b949e; font-size:14px; line-height:1.6; }
+.btn { display:inline-block; padding:10px 24px; background:#ffda00; color:#000; border:none;
+  border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; text-decoration:none; margin:8px; }
+.btn:hover { background:#ffe44d; }
+.steps { text-align:left; margin:20px 0; }
+.steps li { margin:8px 0; font-size:13px; color:#8b949e; }
+.status { padding:12px; border-radius:8px; margin:16px 0; font-size:13px; }
+.success { background:rgba(74,222,128,0.15); color:#4ade80; border:1px solid rgba(74,222,128,0.3); }
+.waiting { background:rgba(255,218,0,0.1); color:#ffda00; border:1px solid rgba(255,218,0,0.2); }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🔑 闲鱼登录</h1>
+  <p>请在下方打开的闲鱼页面中登录你的账号。<br>
+  登录成功后 session 将自动保存，监控即可开始。</p>
+  
+  <div class="steps">
+    <h3>步骤:</h3>
+    <ol>
+      <li>点击下方按钮打开闲鱼首页</li>
+      <li>在打开的页面中扫码或登录你的闲鱼账号</li>
+      <li>登录成功后，关闭该页面</li>
+      <li>返回仪表盘，系统将自动开始监控</li>
+    </ol>
+  </div>
+  
+  <a href="https://www.goofish.com/" target="_blank" class="btn">打开闲鱼登录</a>
+  
+  <div class="status waiting" id="status">
+    ⏳ 等待登录...
+  </div>
+  
+  <p style="font-size:12px;color:#8b949e;">
+    登录信息仅保存在本地服务器，用于定时采集公开商品数据。
+  </p>
+</div>
+
+<script>
+// 轮询检查登录状态
+async function checkStatus() {
+  try {
+    const resp = await fetch('/api/auth/me', {
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+    });
+    if (resp.ok) {
+      // 再检查闲鱼登录状态
+      const statusEl = document.getElementById('status');
+      statusEl.className = 'status success';
+      statusEl.innerHTML = '✅ 闲鱼已登录，session已保存。可以关闭此页返回仪表盘。';
+    }
+  } catch(e) {}
+  setTimeout(checkStatus, 3000);
+}
+checkStatus();
+</script>
+</body>
+</html>

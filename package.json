@@ -1,0 +1,9 @@
+{
+  "name": "xianyu-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "闲鱼店铺监控",
+  "dependencies": {
+    "ws": "^8.0.0"
+  }
+}
