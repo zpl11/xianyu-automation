@@ -308,8 +308,8 @@ class ShopStore {
         checkCount: i.checkCount, url: i.url, 
         wants: i.wants||0, views: i.views||0, favorites: i.favorites||0, 
         comments: i.comments||0, reviews: i.reviews||0, 
-        changes: (i.changes||[]).slice(-5)
-        // 注意：不返回 history 数组，前端不需要，避免响应体过大
+        changes: (i.changes||[]).slice(-50),
+        history: (i.history||[]).slice(-50)
       })) 
     };
   }

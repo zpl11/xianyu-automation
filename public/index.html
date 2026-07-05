@@ -361,71 +361,86 @@ function render(d) {
   document.getElementById('changeCount').textContent = d.changes.length;
   
   var chHtml = '';
-  if (d.changes && d.changes.length > 0) {
-    // 按照 itemId 进行分组
-    var itemChanges = {};
-    for (var k = 0; k < d.changes.length; k++) {
-      var c = d.changes[k];
-      var iId = c.itemId;
-      if (!iId) continue;
-      if (!itemChanges[iId]) itemChanges[iId] = [];
-      itemChanges[iId].push(c);
-    }
+  var changedItems = d.items.filter(function(i) { return i.changes && i.changes.length > 0; });
+  
+  if (changedItems.length > 0) {
+    chHtml += '<table style="width: 100%; border-collapse: collapse; border: 1px solid #eee; text-align: left; font-size: 13px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">';
+    chHtml += '<thead><tr style="background: #fafafa; border-bottom: 1px solid #eee;">';
+    chHtml += '<th style="padding: 12px 15px; color:#555;">📦 商品名称</th>';
+    chHtml += '<th style="padding: 12px 15px; width: 120px; color:#555;">监控历史次数</th>';
+    chHtml += '<th style="padding: 12px 15px; width: 180px; color:#555;">最后一次变动时间</th>';
+    chHtml += '</tr></thead><tbody>';
     
-    // 转换为数组并按最新变动时间排序
-    var groupedArr = Object.keys(itemChanges).map(function(id) {
-      var changes = itemChanges[id];
-      changes.sort(function(a, b) { return new Date(b.timestamp || 0) - new Date(a.timestamp || 0); });
-      var itemObj = d.items.find(function(i) { return i.itemId === id; }) || {};
-      
-      return {
-        itemId: id,
-        title: itemObj.title || changes[changes.length - 1].message || '未知商品',
-        url: itemObj.url || ('https://www.goofish.com/item/' + id),
-        latestTs: changes[0].timestamp || 0,
-        changes: changes
-      };
+    // Sort items by last change time
+    changedItems.sort(function(a, b) {
+      var aTs = a.changes.length ? new Date(a.changes[a.changes.length-1].timestamp) : 0;
+      var bTs = b.changes.length ? new Date(b.changes[b.changes.length-1].timestamp) : 0;
+      return bTs - aTs;
     });
     
-    groupedArr.sort(function(a, b) { return new Date(b.latestTs) - new Date(a.latestTs); });
-    
-    for (var g = 0; g < groupedArr.length; g++) {
-      var gData = groupedArr[g];
-      var divId = 'chg_' + gData.itemId;
+    for (var g = 0; g < changedItems.length; g++) {
+      var item = changedItems[g];
+      var divId = 'history_' + item.itemId;
+      var lastChangeTs = item.changes[item.changes.length - 1].timestamp;
       
-      chHtml += '<div class="item-change-group" style="margin-bottom: 10px; border: 1px solid #eee; border-radius: 4px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">';
+      // Main Row (Click to expand)
+      chHtml += '<tr style="border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background=\'#f5f5f5\'" onmouseout="this.style.background=\'transparent\'" onclick="var el = document.getElementById(\'' + divId + '\'); el.style.display = el.style.display === \'none\' ? \'table-row\' : \'none\';">';
+      chHtml += '<td style="padding: 12px 15px; max-width: 400px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><a href="' + item.url + '" target="_blank" onclick="event.stopPropagation();" style="color: #0366d6; text-decoration: none; font-weight: 500;">' + item.title + '</a></td>';
+      chHtml += '<td style="padding: 12px 15px; color: #888; font-size: 12px;"><span style="background: #eaeaea; padding: 2px 8px; border-radius: 12px;">' + (item.history ? item.history.length : 0) + ' 次查询 ▼</span></td>';
+      chHtml += '<td style="padding: 12px 15px; color: #888; font-family: monospace;">' + (lastChangeTs ? new Date(lastChangeTs).toLocaleString() : '未知') + '</td>';
+      chHtml += '</tr>';
       
-      // 商品列表头 (可点击展开)
-      chHtml += '<div class="item-change-header" onclick="var el = document.getElementById(\'' + divId + '\'); el.style.display = el.style.display === \'none\' ? \'block\' : \'none\';" style="padding: 12px 15px; background: #fafafa; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s;">' +
-        '<div style="font-weight: 500; font-size: 14px; color: #333; max-width: 80%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' +
-          '📦 <a href="' + gData.url + '" target="_blank" onclick="event.stopPropagation();" style="color: #0366d6; text-decoration: none;">' + gData.title + '</a>' +
-        '</div>' +
-        '<div style="font-size: 12px; color: #888; background: #eaeaea; padding: 2px 8px; border-radius: 12px;">' + gData.changes.length + ' 项历史记录 ▼</div>' +
-      '</div>';
+      // Sub Table Row (Hidden by default)
+      chHtml += '<tr id="' + divId + '" style="display: none; background: #fafafa;">';
+      chHtml += '<td colspan="3" style="padding: 0;">';
       
-      // 内部时间轴 (默认隐藏)
-      chHtml += '<div id="' + divId + '" style="display: none; padding: 15px; background: #fff; border-top: 1px solid #eee;">';
+      chHtml += '<div style="padding: 15px 30px; border-bottom: 2px solid #ddd;">';
+      chHtml += '<table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; background: #fff; border: 1px solid #e1e1e1;">';
+      chHtml += '<thead><tr style="background: #f0f0f0; border-bottom: 1px solid #ddd;">';
+      chHtml += '<th style="padding: 8px 10px; width: 140px; color:#555;">搜索时间</th>';
+      chHtml += '<th style="padding: 8px 10px; color:#555;">当时商品名称</th>';
+      chHtml += '<th style="padding: 8px 10px; width: 100px; color:#555;">当时价格</th>';
+      chHtml += '<th style="padding: 8px 10px; width: 280px; color:#555;">变动提醒</th>';
+      chHtml += '</tr></thead><tbody>';
       
-      for (var j = 0; j < gData.changes.length; j++) {
-        var c = gData.changes[j];
-        var ts = c.timestamp ? new Date(c.timestamp).toLocaleString() : '未知时间';
+      var histArr = item.history || [];
+      // reverse history so newest is at the top
+      var sortedHist = histArr.slice().reverse();
+      
+      for (var j = 0; j < sortedHist.length; j++) {
+        var h = sortedHist[j];
+        var ts = h.timestamp ? new Date(h.timestamp).toLocaleString() : '未知时间';
         
-        // 根据变更类型赋予不同颜色的标识
-        var typeStyle = '';
-        if (c.type === 'NEW') typeStyle = 'background: #52c41a; color: #fff;';
-        else if (c.type === 'SOLD_OUT') typeStyle = 'background: #ff4d4f; color: #fff;';
-        else if (c.type === 'PRICE_CHANGE' || c.type === 'TITLE_CHANGE') typeStyle = 'background: #faad14; color: #fff;';
-        else typeStyle = 'background: #1890ff; color: #fff;';
+        // Find if this specific timestamp has a logged change
+        var cMatch = item.changes.find(function(c) { return c.timestamp === h.timestamp; });
+        var badgeHtml = '';
+        if (cMatch) {
+            var c = cMatch;
+            var typeStyle = '';
+            if (c.type === 'NEW') typeStyle = 'background: #52c41a; color: #fff;';
+            else if (c.type === 'SOLD_OUT') typeStyle = 'background: #ff4d4f; color: #fff;';
+            else if (c.type === 'PRICE_CHANGE' || c.type === 'TITLE_CHANGE') typeStyle = 'background: #faad14; color: #fff;';
+            else typeStyle = 'background: #1890ff; color: #fff;';
+            
+            badgeHtml = '<div style="padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; white-space: nowrap; display: inline-block; margin-right: 6px; ' + typeStyle + '">' + c.type.replace(/_/g, ' ') + '</div> ' +
+                        '<span style="color: #444; word-break: break-all;">' + (c.message || '') + '</span>';
+        } else {
+            badgeHtml = '<span style="color: #ccc;">- (无变动)</span>';
+        }
         
-        chHtml += '<div class="change-timeline-item" style="margin-bottom: 12px; display: flex; align-items: flex-start; gap: 12px; font-size: 13px; padding-bottom: 8px; border-bottom: 1px dashed #f0f0f0;">' +
-          '<div style="color: #888; white-space: nowrap; width: 140px; font-family: monospace;">' + ts + '</div>' +
-          '<div style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; white-space: nowrap; ' + typeStyle + '">' + c.type.replace(/_/g, ' ') + '</div>' +
-          '<div style="color: #444; word-break: break-all; line-height: 1.4;">' + (c.message || '') + '</div>' +
-        '</div>';
+        var highlightBg = cMatch ? 'background: #fdfdfd;' : '';
+        chHtml += '<tr style="border-bottom: 1px solid #f0f0f0; ' + highlightBg + '">';
+        chHtml += '<td style="padding: 8px 10px; color: #888; font-family: monospace;">' + ts + '</td>';
+        chHtml += '<td style="padding: 8px 10px; max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color:#666;">' + (h.title || '') + '</td>';
+        chHtml += '<td style="padding: 8px 10px; color: #ff4d4f; font-weight: 500;">' + (h.price ? ('¥' + h.price) : '') + '</td>';
+        chHtml += '<td style="padding: 8px 10px;">' + badgeHtml + '</td>';
+        chHtml += '</tr>';
       }
       
-      chHtml += '</div></div>';
+      chHtml += '</tbody></table></div>';
+      chHtml += '</td></tr>';
     }
+    chHtml += '</tbody></table>';
   }
   
   document.getElementById('changesList').innerHTML = chHtml || '<div class="empty">暂无变更</div>';
