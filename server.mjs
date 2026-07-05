@@ -44,11 +44,12 @@ async function refreshSession() {
     const t = targets.find(t => (t.url || '').includes('goofish.com') && !t.url.includes('g.alicdn') && !t.url.includes('xdomain'));
     if (!t) return false;
     const ws = new WebSocket(t.webSocketDebuggerUrl);
-    await new Promise(r => ws.on('open', r));
+    await new Promise(r => { ws.on('open', r); ws.on('error', r); setTimeout(r, 3000); });
+    if (ws.readyState !== WebSocket.OPEN) return false;
     let id = 1; const p = new Map();
     ws.on('message', d => { try { const m = JSON.parse(d.toString()); if (m.id) { const h = p.get(m.id); if (h) { clearTimeout(h.t); p.delete(m.id); h.r(m); } } } catch(e) {} });
     const s = (m, par) => new Promise(r => { const i = id++; p.set(i, { r, t: setTimeout(() => { p.delete(i); r({}); }, 8000) }); ws.send(JSON.stringify({ id: i, method: m, params: par })); });
-    await s('Network.enable'); await sleep(300);
+    await s('Network.enable');
     const ck = await s('Network.getAllCookies'); ws.close();
     const all = ck.result?.cookies || [];
     const keep = all.filter(c => ['.goofish.com','.taobao.com','.tb.cn','h5api.m.goofish.com'].some(d => c.domain.includes(d)));
@@ -68,20 +69,43 @@ async function callMTOP(apiName, data, extraParams = {}) {
   const sign = crypto.createHash('md5').update(`${_session.token}&${ts}&${APP_KEY}&${dataStr}`).digest('hex');
   const params = { jsv: '2.7.2', appKey: APP_KEY, t: String(ts), sign, v: '1.0', type: 'originaljson', api: `mtop.${apiName}`, dataType: 'json', timeout: '20000', accountSite: 'xianyu', sessionOption: 'AutoLoginOnly', ...extraParams };
   const url = `https://h5api.m.goofish.com/h5/mtop.${apiName}/1.0/?${new URLSearchParams(params)}`;
-  return new Promise((resolve, reject) => {
-    const bd = `data=${encodeURIComponent(dataStr)}`;
-    const req = https.request(url, { method: 'POST', headers: { 'Cookie': _session.cookies, 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(bd), 'Origin': 'https://www.goofish.com', 'Referer': 'https://www.goofish.com/', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept': 'application/json' }}, res => {
-      let body = ''; res.on('data', c => body += c);
-      res.on('end', () => { 
-        try { 
-          const m = body.match(/^\s*mtopjsonp\d+\s*\((.*)\)\s*;?\s*$/s); 
-          resolve(m ? JSON.parse(m[1]) : JSON.parse(body)); 
-        } catch(e) { 
-          reject(new Error(`解析失败: ${body.slice(0, 150)}`)); 
-        } 
-      });
-    }); req.on('error', reject); req.write(bd); req.end();
-  });
+  
+  const bd = `data=${encodeURIComponent(dataStr)}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(new Error('请求超时 (15s)')), 15000);
+  
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Cookie': _session.cookies,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': 'https://www.goofish.com',
+        'Referer': 'https://www.goofish.com/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json'
+      },
+      body: bd,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!res.ok) {
+      return { ret: [`FAIL_HTTP_${res.status}`], data: null };
+    }
+    
+    const body = await res.text();
+    try {
+      const m = body.match(/^\s*mtopjsonp\d+\s*\((.*)\)\s*;?\s*$/s);
+      return m ? JSON.parse(m[1]) : JSON.parse(body);
+    } catch (e) {
+      return { ret: ['FAIL_PARSE_ERROR'], data: null };
+    }
+  } catch (e) {
+    clearTimeout(timeoutId);
+    throw e;
+  }
 }
 
 // ============================================================
@@ -125,7 +149,8 @@ async function refreshX5sec() {
     const page = targets.find(t => (t.url||'').includes('goofish.com') && !t.url.includes('g.alicdn') && !t.url.includes('xdomain'));
     if (!page) return false;
     const ws = new WebSocket(page.webSocketDebuggerUrl);
-    await new Promise(r => ws.on('open', r));
+    await new Promise(r => { ws.on('open', r); ws.on('error', r); setTimeout(r, 3000); });
+    if (ws.readyState !== WebSocket.OPEN) return false;
     let id = 1; const p = new Map();
     ws.on('message', d => { try { const m = JSON.parse(d.toString()); if (m.id) { const h = p.get(m.id); if (h) { clearTimeout(h.t); p.delete(m.id); h.r(m); } } } catch(e) {} });
     const s = (m, par) => new Promise(r => { const i = id++; p.set(i, { r, t: setTimeout(() => { p.delete(i); r({}); }, 20000) }); ws.send(JSON.stringify({ id: i, method: m, params: par })); });
@@ -151,19 +176,67 @@ class ShopStore {
   
   async fetchAndSync() {
     const now = new Date().toISOString();
-    const allCards = []; let page = 1;
-    while (true) {
-      const r = await callMTOP('idle.web.xyh.item.list', { needGroupInfo: true, pageNumber: page, userId: String(this.userId), pageSize: 20 }, { spm_cnt: 'a21ybx.personal.0.0' });
-      const cards = r.data?.cardList || []; allCards.push(...cards);
-      if (page === 1 && (r.data?.totalCount || 0) > 0) console.log(`  该店约 ${r.data.totalCount} 个商品`);
-      if (!(r.data?.nextPage || r.data?.nextPageNum) || cards.length < 20 || page > 50) break;
-      page++;
+    const allCards = [];
+    const seenIds = new Set();
+    
+    // 获取第一页并得到总商品数
+    let firstPageRes;
+    try {
+      firstPageRes = await callMTOP('idle.web.xyh.item.list', { needGroupInfo: true, pageNumber: 1, userId: String(this.userId), pageSize: 20 }, { spm_cnt: 'a21ybx.personal.0.0' });
+    } catch(e) {
+      console.error('  ❌ callMTOP 第一页异常:', e.message);
+      return 0;
     }
-    console.log(`  已获取 ${allCards.length} 个商品 (${page}页)`);
-    const apiIds = new Set(allCards.map(c => String(c.cardData?.id || '')));
+    
+    if (!firstPageRes || !firstPageRes.data) {
+      console.log('  ⚠️  返回空数据，停止同步');
+      return 0;
+    }
+    
+    const processCards = (data) => {
+      const cards = data?.cardList || [];
+      cards.forEach(c => {
+        const rawId = c.cardData?.detailParams?.itemId || String(c.cardData?.id || '');
+        if (rawId && !seenIds.has(rawId)) {
+          seenIds.add(rawId);
+          allCards.push({ _id: rawId, cardData: c.cardData });
+        }
+      });
+    };
+    
+    processCards(firstPageRes.data);
+    const totalCount = parseInt(firstPageRes.data.totalCount || '0', 10);
+    console.log(`  该店共 ${totalCount || '?'} 个商品`);
+    
+    // 如果有更多页，并发请求剩余页（最多支持50页）
+    const totalPages = Math.min(50, Math.ceil(totalCount / 20));
+    if (totalPages > 1) {
+      console.log(`  并发获取剩余 ${totalPages - 1} 页 (限制并发数: 5)...`);
+      const pagesToFetch = Array.from({length: totalPages - 1}, (_, i) => i + 2);
+      
+      const maxConcurrent = 5;
+      for (let i = 0; i < pagesToFetch.length; i += maxConcurrent) {
+        const chunk = pagesToFetch.slice(i, i + maxConcurrent);
+        const promises = chunk.map(p => 
+          callMTOP('idle.web.xyh.item.list', { needGroupInfo: true, pageNumber: p, userId: String(this.userId), pageSize: 20 }, { spm_cnt: 'a21ybx.personal.0.0' })
+          .then(r => {
+            if (r && r.data) processCards(r.data);
+          })
+          .catch(e => {
+            console.error(`  ❌ 翻页 ${p} 异常:`, e.message);
+          })
+        );
+        await Promise.all(promises);
+      }
+    }
+    
+    console.log(`  已获取 ${allCards.length} 个商品 (${totalPages}页)`);
+    const apiIds = new Set(allCards.map(c => c._id));
+    
     for (const card of allCards) {
-      const cd = card.cardData || {}; const id = String(cd.id || ''); if (!id) continue;
-      const item = { itemId: id, title: cd.title || '', price: cd.priceInfo?.price || '', image: cd.picInfo?.url || '', url: `https://www.goofish.com/item/${id}`, wants: 0, views: 0, favorites: 0, comments: 0, reviews: 0 };
+      const cd = card.cardData || {};
+      const id = card._id; if (!id) continue;
+      const item = { itemId: id, title: cd.title || '', price: cd.priceInfo?.price || '', image: cd.picInfo?.url || cd.detailParams?.picUrl || '', url: `https://www.goofish.com/item/${id}`, wants: 0, views: 0, favorites: 0, comments: 0, reviews: 0 };
       if (!this.data.items[id]) {
         this.data.items[id] = { ...item, firstSeen: now, lastSeen: now, checkCount: 1, status: 'active', history: [{ timestamp: now, title: item.title, price: item.price }], changes: [{ timestamp: now, type: 'NEW', message: `新商品: ${item.title}` }] };
         this.data.changes.push({ timestamp: now, itemId: id, type: 'NEW', message: item.title });
@@ -208,7 +281,22 @@ class ShopStore {
   
   getJSON() {
     const items = Object.values(this.data.items).sort((a, b) => (b.checkCount||0) - (a.checkCount||0));
-    return { userId: this.userId, totalItems: items.length, activeItems: items.filter(i => i.status !== 'sold_out').length, lastUpdate: this.data.lastUpdate, changes: (this.data.changes||[]).slice(-50).reverse(), items: items.map(i => ({ itemId: i.itemId, title: i.title, price: i.price, status: i.status, firstSeen: i.firstSeen, lastSeen: i.lastSeen, checkCount: i.checkCount, url: i.url, wants: i.wants||0, views: i.views||0, favorites: i.favorites||0, comments: i.comments||0, reviews: i.reviews||0, changes: (i.changes||[]).slice(-5) })) };
+    return { 
+      userId: this.userId, 
+      totalItems: items.length, 
+      activeItems: items.filter(i => i.status !== 'sold_out').length, 
+      lastUpdate: this.data.lastUpdate, 
+      changes: (this.data.changes||[]).slice(-50).reverse(), 
+      items: items.map(i => ({ 
+        itemId: i.itemId, title: i.title, price: i.price, 
+        status: i.status, firstSeen: i.firstSeen, lastSeen: i.lastSeen, 
+        checkCount: i.checkCount, url: i.url, 
+        wants: i.wants||0, views: i.views||0, favorites: i.favorites||0, 
+        comments: i.comments||0, reviews: i.reviews||0, 
+        changes: (i.changes||[]).slice(-5)
+        // 注意：不返回 history 数组，前端不需要，避免响应体过大
+      })) 
+    };
   }
   
   exportCSV() {
@@ -231,8 +319,18 @@ const HTML = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf-
 //  HTTP 路由
 // ============================================================
 function serveStatic(res, c, t='text/html') { res.writeHead(200,{'Content-Type':t+'; charset=utf-8','Access-Control-Allow-Origin':'*'}); res.end(c); }
-function serveJSON(res, d, s=200) { res.writeHead(s,{'Content-Type':'application/json; charset=utf-8','Access-Control-Allow-Origin':'*'}); res.end(JSON.stringify(d)); }
-function serveError(res, m, s=400) { res.writeHead(s,{'Content-Type':'application/json; charset=utf-8'}); res.end(JSON.stringify({error:m})); }
+function serveJSON(res, d, s=200) {
+  if (res.headersSent || res.writableEnded) return;
+  let body;
+  try { body = JSON.stringify(d); } catch(e) { body = JSON.stringify({error:'serialize_failed'}); s = 500; }
+  res.writeHead(s,{'Content-Type':'application/json; charset=utf-8','Access-Control-Allow-Origin':'*'});
+  res.end(body);
+}
+function serveError(res, m, s=400) {
+  if (res.headersSent || res.writableEnded) return;
+  res.writeHead(s,{'Content-Type':'application/json; charset=utf-8','Access-Control-Allow-Origin':'*'});
+  res.end(JSON.stringify({error:m}));
+}
 function parseBody(req) { return new Promise(r => { let b = ''; req.on('data', c => b += c); req.on('end', () => { try { r(JSON.parse(b)); } catch(e) { r({}); } }); }); }
 
 const server = http.createServer(async (req, res) => {
@@ -245,15 +343,25 @@ const server = http.createServer(async (req, res) => {
 	    if (path === '/api/monitor' && req.method === 'POST') {
 	      const body = await parseBody(req); const id = body.userId;
 	      if (!id) return serveError(res, '需要userId');
-	      // 尝试多次获取session（等Chrome页面加载）
+	      // 获取session（最多重试3次）
 	      let ok = _session.valid;
-	      for (let i = 0; !ok && i < 6; i++) {
+	      for (let i = 0; !ok && i < 3; i++) {
 	        ok = await refreshSession();
-	        if (!ok && i < 5) await sleep(2000);
+	        if (!ok && i < 2) await sleep(1000);
 	      }
 	      if (!ok) return serveError(res, '请在Chrome窗口中登录闲鱼，然后重试', 401);
-	      const store = new ShopStore(id); await store.fetchAndSync();
-	      return serveJSON(res, store.getJSON());
+	      console.log('  📦 开始 fetchAndSync...');
+	      const store = new ShopStore(id);
+	      try {
+	        await store.fetchAndSync();
+	        console.log('  📦 fetchAndSync 完成，开始构建响应...');
+	        const json = store.getJSON();
+	        console.log('  📦 getJSON 完成，items:', json.items?.length, '准备发送响应...');
+	        return serveJSON(res, json);
+	      } catch(e) {
+	        console.error('  ❌ monitor 错误:', e.message, e.stack?.slice(0,200));
+	        return serveError(res, e.message, 500);
+	      }
 	    }
     if (path === '/api/stats' && req.method === 'POST') {
       const body = await parseBody(req); const itemId = body.itemId;
@@ -396,5 +504,13 @@ setTimeout(async () => {
   }
   console.log('='*50);
 }, 500);
+
+// 全局异常兜底：防止 socket write after end 等错误杀死进程
+process.on('uncaughtException', (err) => {
+  console.error('  ⚠️ uncaughtException (已捕获，进程继续):', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('  ⚠️ unhandledRejection (已捕获，进程继续):', reason?.message || reason);
+});
 
 server.listen(PORT);

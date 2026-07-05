@@ -25,7 +25,11 @@ if not exist "node_modules\ws" (
     )
 )
 
-:: 3. Start server (it will auto-launch Chrome)
+:: 3. Cleanup port 3000 if occupied
+echo Cleaning up port 3000...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":3000"') do taskkill /F /PID %%a >nul 2>&1
+
+:: 4. Start server (it will auto-launch Chrome)
 echo.
 echo Starting service...
 echo Open http://localhost:3000 in your browser
