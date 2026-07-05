@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>闲鱼店铺监控</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;color:#333}
+.container{max-width:1200px;margin:0 auto;padding:20px}
+.header{background:linear-gradient(135deg,#ff6b6b,#ffa94d);color:#fff;padding:30px;border-radius:12px;margin-bottom:20px}
+.header h1{font-size:28px;margin-bottom:5px}
+.search-box{background:#fff;padding:20px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,.08);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.search-box input{flex:1;min-width:200px;padding:12px 16px;border:2px solid #e0e0e0;border-radius:8px;font-size:16px;outline:none}
+.search-box input:focus{border-color:#ff6b6b}
+.search-box button{padding:12px 24px;background:#ff6b6b;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer}
+.search-box button:hover{background:#e85a5a}
+.search-box button:disabled{background:#ccc;cursor:not-allowed}
+.status{padding:6px 14px;border-radius:20px;font-size:13px}
+.status.online{background:#e8f5e9;color:#2e7d32}
+.status.offline{background:#fbe9e7;color:#c62828}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px}
+.stat-card{background:#fff;padding:16px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.08);text-align:center}
+.stat-card .num{font-size:26px;font-weight:700;color:#ff6b6b}
+.stat-card .label{font-size:13px;color:#888;margin-top:4px}
+.section{background:#fff;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden}
+.section-title{padding:16px 20px;font-size:16px;font-weight:600;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.section-title .badge{background:#ff6b6b;color:#fff;padding:2px 10px;border-radius:12px;font-size:12px}
+.item-card{padding:12px 20px;border-bottom:1px solid #f5f5f5;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.item-card:hover{background:#fafafa}
+.item-info{flex:1;min-width:0}
+.item-title{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item-title a{color:#333;text-decoration:none}
+.item-title a:hover{color:#ff6b6b}
+.item-stats{font-size:12px;color:#666;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+.item-price{font-weight:700;color:#ff6b6b;white-space:nowrap;text-align:right}
+.item-meta{font-size:11px;color:#999;text-align:right;white-space:nowrap}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;margin-left:5px}
+.tag.new{background:#e3f2fd;color:#1565c0}
+.tag.sold{background:#fbe9e7;color:#c62828}
+.change-item{padding:10px 20px;border-bottom:1px solid #f5f5f5;font-size:13px;display:flex;gap:10px}
+.change-item .time{color:#999;white-space:nowrap;min-width:65px}
+.change-item .type{font-weight:600;min-width:75px}
+.change-item .type.NEW{color:#1565c0}
+.change-item .type.TITLE_CHANGE{color:#e65100}
+.change-item .type.PRICE_CHANGE{color:#2e7d32}
+.change-item .type.SOLD_OUT{color:#c62828}
+.change-item .type.STATS_CHANGE{color:#6a1b9a}
+.change-item .msg{color:#555;flex:1}
+.empty{padding:40px;text-align:center;color:#999}
+.loading{text-align:center;padding:20px;color:#666}
+.spinner{display:inline-block;width:20px;height:20px;border:3px solid #f0f0f0;border-top-color:#ff6b6b;border-radius:50%;animation:spin .8s linear infinite;margin-right:8px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn-sm{padding:6px 14px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:13px}
+.btn-sm:hover{border-color:#ff6b6b;color:#ff6b6b}
+.query-btn{background:#ff6b6b;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:13px;margin-left:8px}
+.query-btn:hover{background:#e85a5a}
+.query-btn:disabled{background:#ccc;cursor:default}
+.tip{padding:12px 20px;font-size:13px;background:#fff3e0;border-bottom:1px solid #ffe0b2}
+.tip.info{color:#e65100}
+.tip.ok{color:#2e7d32;background:#e8f5e9}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>闲鱼店铺监控 <span>v1.0</span></h1>
+    <div id="sessionStatus" class="status offline">❌ 未连接Chrome</div>
+  </div>
+<div class="search-box">
+  <input id="shopId" type="text" placeholder="输入店铺ID" value="2221400994666">
+  <button id="btnMonitor" onclick="start()">🔍 开始监控</button>
+	  <button class="query-btn" id="btnExport" onclick="exportCSV()" style="display:none">📥 导出CSV</button>
+	  <button class="query-btn" id="btnRefresh" onclick="refreshMonitor()">🔄 刷新数据</button>
+</div>
+  
+  <div id="loading" style="display:none" class="loading">
+    <div class="spinner"></div>
+    <div style="margin-top:15px;" id="loadingText">正在同步商品数据...</div>
+    <div style="margin-top:10px; font-size: 12px; color: #666;">（如店铺商品超过上千件，最多可能需要 1~2 分钟，请耐心等待，切勿关闭页面）</div>
+  </div> 
+
+<div id="statsArea" class="stats-grid" style="display:none"></div>
+<div id="tipArea" class="tip" style="display:none"></div>
+<div id="itemsSection" class="section" style="display:none">
+  <div class="section-title">
+    <span>📦 在售商品 <span id="itemCount" class="badge">0</span></span>
+    <span style="display:flex;align-items:center;gap:8px;font-size:13px;color:#999">
+      <span>更新: <span id="lastUpdate">-</span></span>
+      <button class="query-btn" id="btnStats" onclick="queryAll()">📊 获取统计数据</button>
+    </span>
+  </div>
+  <div id="itemsList"></div>
+</div>
+<div id="changesSection" class="section" style="display:none">
+<div class="section-title">📝 变更记录 <span id="changeCount" class="badge">0</span></div>
+  <div id="changesList"></div>
+</div>
+</div>
+<script>
+let userId = '', items = [];
+
+async function checkSession() {
+  const r = await fetch('/api/session');
+  const d = await r.json();
+  const el = document.getElementById('sessionStatus');
+  if (d.valid) { el.className = 'status online'; el.textContent = '✅ Chrome已连接 (' + d.count + '个Cookie)'; return true; }
+  else { el.className = 'status offUsersline'; el.textContent = '❌ 需要Chrome闲鱼页面'; return false; }
+}
+
+async function start() {
+  userId = document.getElementById('shopId').value.trim();
+  if (!userId) return alert('输入店铺ID');
+  localStorage.setItem('lastShopId', userId);
+  if (!await checkSession()) return alert('请先在Chrome中打开闲鱼页面');
+  
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('loadingText').textContent = '获取商品列表...';
+  
+  try {
+    const r = await fetch('/api/monitor', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({userId}) });
+    const d = await r.json();
+    document.getElementById('loading').style.display = 'none';
+    
+    if (d.error) { alert(d.error); return; }
+    items = d.items || [];
+    if (!items) { alert('获取到的商品列表为空或格式错误'); return; }
+    document.getElementById('btnExport').style.display = 'inline-block';
+    render(d);
+    
+    const hasStats = items.some(function(i) { return i.wants || i.views; });
+    if (!hasStats && items.length > 0) {
+      const tip = document.getElementById('tipArea');
+      tip.style.display = 'block';
+      tip.className = 'tip info';
+      tip.innerHTML = '💡 点击 "获取统计数据" 查看浏览/想要/收藏数（留言和评价仅卖家可见）';
+    }
+  } catch (e) {
+    document.getElementById('loading').style.display = 'none';
+    alert('网络请求失败或服务器异常: ' + e.message);
+  }
+}
+
+async function queryAll() {
+  const btn = document.getElementById('btnStats');
+  btn.disabled = true;
+  
+  const tip = document.getElementById('tipArea');
+  tip.style.display = 'block';
+  tip.className = 'tip info';
+  
+  // 从上次中断的位置继续
+  let startIdx = parseInt(sessionStorage.getItem('statsProgress') || '0');
+  let done = startIdx;
+  let x5secHit = false;
+  
+  tip.innerHTML = '⏳ 正在查询 ' + startIdx + '/' + items.length + ' ... Chrome后台静默获取数据';
+  
+  for (let i = startIdx; i < items.length; i++) {
+    const item = items[i];
+    if (item.views || item.wants) { done++; continue; }
+    
+    try {
+      const r = await fetch('/api/stats', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({itemId:item.itemId, userId}) });
+      const d = await r.json();
+      done++;
+      btn.textContent = '📊 ' + done + '/' + items.length;
+      
+      if (d.ok) {
+        item.views = d.views || 0;
+        item.wants = d.wants || 0;
+        item.favorites = d.favorites || 0;
+        item.comments = d.comments || 0;
+        item.reviews = d.reviews || 0;
+        updateRow(item);
+        sessionStorage.setItem('statsProgress', String(i + 1));
+      } else if (d.x5sec_expired) {
+        x5secHit = true;
+        break;  // 中断循环，但保持进度
+      }
+    } catch(e) {
+      console.error('Fetch stats error:', e);
+      done++;
+    }
+    await new Promise(function(r) { setTimeout(r, 200); });
+  }
+  
+  if (x5secHit) {
+    btn.disabled = false;
+    btn.textContent = '📊 获取统计数据 (' + done + '/' + items.length + ')';
+    tip.className = 'tip info';
+    tip.innerHTML = '⚠️ 安全验证已过期，<button class="btn-sm" onclick="goVerify()" style="background:#ff6b6b;color:#fff;border:none;padding:6px 16px;border-radius:4px;cursor:pointer;margin:0 8px">🔗 去验证</button> 然后自动继续（已查' + done + '个）';
+  } else {
+    btn.disabled = false;
+    btn.textContent = '📊 获取统计数据';
+    tip.className = 'tip ok';
+    tip.innerHTML = '✅ 查询完成！共查询 ' + done + ' 个商品';
+    sessionStorage.removeItem('statsProgress');
+  }
+}
+
+function updateRow(item) {
+  const el = document.getElementById('s_' + item.itemId);
+  if (el) {
+    var parts = [];
+    if (item.views) parts.push('👁' + item.views);
+    if (item.wants) parts.push('❤️' + item.wants);
+    if (item.favorites) parts.push('⭐' + item.favorites);
+    if (item.comments) parts.push('💬' + item.comments);
+    if (item.reviews) parts.push('📝' + item.reviews);
+    el.innerHTML = parts.join(' ') || '暂无数据';
+  }
+}
+
+function exportCSV() {
+  if (!userId) return alert('请先监控一个店铺');
+  // 用下载链接代替 window.open（避免弹窗拦截）
+  const a = document.createElement('a');
+  a.href = '/api/export?userId=' + userId;
+  a.download = 'xianyu_' + userId + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function refreshMonitor() {
+  if (!userId) return;
+  start();
+}
+
+async function goVerify() {
+  /** 通过CDP让Chrome自动打开商品页完成验证，然后自动继续查询 */
+  const tip = document.getElementById('tipArea');
+  tip.innerHTML = '⏳ 正在打开商品页刷新验证...';
+  
+  // 通知服务器导航到商品页（CDP静默操作）
+  const r = await fetch('/api/refresh-x5sec', { method:'POST' });
+  const d = await r.json();
+  
+  if (d.ok) {
+    tip.innerHTML = '⏳ Chrome已打开商品页，等待验证完成...';
+    // 轮询检查session是否恢复
+    let waited = 0;
+    const poll = setInterval(async () => {
+      const sr = await fetch('/api/session');
+      const sd = await sr.json();
+      waited += 2;
+      if (sd.valid) {
+        clearInterval(poll);
+        tip.innerHTML = '✅ 验证已恢复，继续查询...';
+        // session恢复，继续查询
+        document.getElementById('btnStats').click();
+      } else if (waited > 30) {
+        clearInterval(poll);
+        tip.innerHTML = '⚠️ 验证超时，请在Chrome中手动刷新闲鱼页面后点击"获取统计数据"继续';
+      }
+    }, 2000);
+  } else {
+    tip.innerHTML = '❌ 无法自动打开商品页，请手动在Chrome中打开任意商品详情页';
+  }
+}
+
+function render(d) {
+  // Stats
+  document.getElementById('statsArea').style.display = 'grid';
+  document.getElementById('statsArea').innerHTML =
+    '<div class="stat-card"><div class="num">' + d.activeItems + '</div><div class="label">在售</div></div>' +
+    '<div class="stat-card"><div class="num">' + (d.totalItems - d.activeItems) + '</div><div class="label">已下架</div></div>' +
+    '<div class="stat-card"><div class="num">' + d.changes.length + '</div><div class="label">变更</div></div>' +
+    '<div class="stat-card"><div class="num" style="font-size:16px">' + (d.lastUpdate ? new Date(d.lastUpdate).toLocaleTimeString() : '-') + '</div><div class="label">更新</div></div>';
+  
+  // Items
+  document.getElementById('itemsSection').style.display = 'block';
+  document.getElementById('itemCount').textContent = d.items.length;
+  document.getElementById('lastUpdate').textContent = d.lastUpdate ? new Date(d.lastUpdate).toLocaleString() : '-';
+  
+  var active = d.items.filter(function(i) { return i.status !== 'sold_out'; });
+  var sold = d.items.filter(function(i) { return i.status === 'sold_out'; });
+  
+  var html = '';
+  for (var i = 0; i < active.length; i++) {
+    var item = active[i];
+    var tag = item.checkCount <= 1 ? '<span class="tag new">新品</span>' : '';
+    var statsText = (item.views || item.wants)
+      ? ('👁' + (item.views||0) + ' ❤️' + (item.wants||0) + ' ⭐' + (item.favorites||0) + ' 💬' + (item.comments||0) + ' 📝' + (item.reviews||0))
+      : '<span style="color:#bbb">待查询</span>';
+    
+    html += '<div class="item-card">' +
+      '<div class="item-info">' +
+        '<div class="item-title"><a href="' + item.url + '" target="_blank">' + item.title + '</a>' + tag + '</div>' +
+        '<div class="item-stats"><span id="s_' + item.itemId + '">' + statsText + '</span></div>' +
+      '</div>' +
+      '<div class="item-price">¥' + (item.price || '?') + '</div>' +
+      '<div class="item-meta">' + item.checkCount + '次</div>' +
+    '</div>';
+  }
+  
+  if (sold.length > 0) {
+    html += '<div style="padding:10px 20px;background:#fafafa;font-size:13px;color:#999">已下架 ' + sold.length + ' 个:</div>';
+    for (var j = 0; j < sold.length; j++) {
+      html += '<div class="item-card" style="opacity:.6">' +
+        '<div class="item-info"><div class="item-title"><span style="text-decoration:line-through">' + sold[j].title + '</span> <span class="tag sold">下架</span></div></div>' +
+        '<div class="item-price">¥' + (sold[j].price || '?') + '</div>' +
+      '</div>';
+    }
+  }
+  
+  document.getElementById('itemsList').innerHTML = html || '<div class="empty">暂无商品</div>';
+  
+  // Changes
+  document.getElementById('changesSection').style.display = 'block';
+  document.getElementById('changeCount').textContent = d.changes.length;
+  
+  var chHtml = '';
+  if (d.changes && d.changes.length > 0) {
+    var groups = {};
+    for (var k = 0; k < d.changes.length; k++) {
+      var c = d.changes[k];
+      var ts = c.timestamp || 'unknown';
+      if (!groups[ts]) groups[ts] = [];
+      groups[ts].push(c);
+    }
+    
+    var sortedTs = Object.keys(groups).sort(function(a, b) { return new Date(b) - new Date(a); });
+    
+    for (var g = 0; g < sortedTs.length; g++) {
+      var tsKey = sortedTs[g];
+      var groupChanges = groups[tsKey];
+      var displayTs = tsKey === 'unknown' ? '未知时间' : new Date(tsKey).toLocaleString();
+      
+      chHtml += '<div class="sync-group" style="margin-bottom: 15px;">' +
+        '<div class="sync-time" style="font-weight:bold; background:#f0f0f0; padding:6px 12px; border-radius:4px; margin-bottom:8px; font-size:13px; color:#444;">' +
+          '🕒 ' + displayTs + ' 监控查询记录 <span style="font-weight:normal; color:#888; font-size:12px;">(' + groupChanges.length + ' 项变更)</span>' +
+        '</div>';
+      
+      for (var j = 0; j < groupChanges.length; j++) {
+        var c = groupChanges[j];
+        chHtml += '<div class="change-item" style="margin-left: 10px; border-left: 2px solid #e1e1e1; padding-left: 10px; margin-bottom: 4px;">' +
+          '<span class="type ' + c.type + '">' + c.type.replace(/_/g, ' ') + '</span>' +
+          '<span class="msg" style="color:#333;">' + (c.message || '') + '</span>' +
+        '</div>';
+      }
+      chHtml += '</div>';
+    }
+  }
+  
+  document.getElementById('changesList').innerHTML = chHtml || '<div class="empty">暂无变更</div>';
+}
+
+window.onload = async function() {
+  await checkSession();
+  var saved = localStorage.getItem('lastShopId');
+  if (saved) { document.getElementById('shopId').value = saved; start(); }
+};
+</script>
+</body></html>
